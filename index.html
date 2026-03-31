@@ -1,0 +1,40 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anı Müzesi Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-loading">
+        <p class="eyebrow">Anı Müzesi</p>
+        <h1>Portal hazırlanıyor</h1>
+        <p>Uygulama başlatılırken bu alan otomatik olarak panelle değişecek.</p>
+      </div>
+    </div>
+    <noscript>
+      <div class="boot-error">
+        <p class="eyebrow">Anı Müzesi</p>
+        <h1>JavaScript kapalı</h1>
+        <p>Portalın çalışması için tarayıcıda JavaScript açık olmalı.</p>
+      </div>
+    </noscript>
+    <script defer src="./src/utils/helpers.js"></script>
+    <script defer src="./src/utils/orientation.js"></script>
+    <script defer src="./src/utils/exporters.js"></script>
+    <script defer src="./src/store.js"></script>
+    <script defer src="./src/views/loginView.js"></script>
+    <script defer src="./src/views/customerView.js"></script>
+    <script defer src="./src/views/adminView.js"></script>
+    <script defer src="./src/router.js"></script>
+    <script defer src="./src/main.js"></script>
+  </body>
+</html>
