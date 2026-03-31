@@ -10,7 +10,7 @@
   }
 
   function getImageSource(item) {
-    return escapeHtml(window.AnimuzesiHelpers.getResolvedImageSource(item));
+    return escapeHtml(window.AnimuzesiHelpers.getDisplayImageSrc(item));
   }
 
   function shouldIgnoreDragStart(target) {

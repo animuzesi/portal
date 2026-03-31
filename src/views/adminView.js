@@ -12,7 +12,7 @@
   }
 
   function getImageSource(item) {
-    return escapeHtml(window.AnimuzesiHelpers.getResolvedImageSource(item));
+    return escapeHtml(window.AnimuzesiHelpers.getDisplayImageSrc(item));
   }
 
   function bindCopy(selector, text) {
@@ -66,18 +66,27 @@
         downloadPhotosButton.textContent = "İndiriliyor";
 
         try {
-          for (var i = 0; i < outputs.downloadItems.length; i += 1) {
-            var item = outputs.downloadItems[i];
-            var imageUrl = helpers.getResolvedImageSource(item.memory);
-            await helpers.downloadFileFromUrl(imageUrl, item.fileName);
-            await new Promise(function (resolve) {
-              window.setTimeout(resolve, 160);
-            });
+          var result = await helpers.downloadFilesAsZip({
+            zipName: outputs.zipName,
+            items: outputs.downloadItems,
+          });
+          downloadPhotosButton.textContent = result.failures.length
+            ? "Kismi indirildi"
+            : "İndirildi";
+          if (result.failures.length) {
+            alert(
+              "Bazi dosyalar indirilemedi:\n" +
+                result.failures
+                  .map(function (item) {
+                    return item.fileName + " - " + item.message;
+                  })
+                  .join("\n")
+            );
           }
-          downloadPhotosButton.textContent = "İndirildi";
         } catch (error) {
           console.error(error);
           downloadPhotosButton.textContent = "İndirme hatası";
+          alert(error.message || "Toplu indirme sırasında hata oluştu.");
         }
 
         window.setTimeout(function () {
@@ -156,13 +165,16 @@
       var jsonExport = exporters.createJsonExport(submittedMemories, entries);
       var downloadItems = entries
         .map(function (entry, index) {
+          var resolvedUrl = helpers.resolveImageSrc(submittedMemories[index]);
           return {
             fileName: entry.plannedFileName,
             memory: submittedMemories[index],
+            url: resolvedUrl,
+            zipPath: entry.orientation + "/" + entry.plannedFileName,
           };
         })
         .filter(function (item) {
-          return helpers.isUsableImageSource(helpers.getResolvedImageSource(item.memory));
+          return helpers.isUsableImageSource(item.url);
         });
       var totalOrdersWithData = currentState.validOrderCodes.filter(function (code) {
         var order = currentState.allOrders[code];
@@ -229,6 +241,7 @@
         groupedRenameList: groupedRenameList,
         jsonExport: jsonExport,
         downloadItems: downloadItems,
+        zipName: (selectedOrderCode || "siparis") + "-fotograflar.zip",
       });
     }
 

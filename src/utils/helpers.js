@@ -113,7 +113,7 @@
     );
   }
 
-  function getResolvedImageSource(item) {
+  function resolveImageSrc(item) {
     var supabaseApi = window.AnimuzesiSupabase;
 
     if (item && isUsableImageSource(item.previewUrl)) {
@@ -136,7 +136,7 @@
       }
     }
 
-    return getImagePlaceholderUrl();
+    return null;
   }
 
   function getFallbackImageSource(item, currentSource) {
@@ -171,7 +171,11 @@
       }
     }
 
-    return getImagePlaceholderUrl();
+    return null;
+  }
+
+  function getDisplayImageSrc(item) {
+    return resolveImageSrc(item) || getImagePlaceholderUrl();
   }
 
   function triggerBlobDownload(blob, filename) {
@@ -199,6 +203,60 @@
 
     var blob = await response.blob();
     triggerBlobDownload(blob, filename);
+  }
+
+  async function downloadFilesAsZip(options) {
+    var items = options && Array.isArray(options.items) ? options.items : [];
+    var zipName = (options && options.zipName) || "downloads.zip";
+
+    if (!window.JSZip) {
+      throw new Error("ZIP kütüphanesi yüklenemedi.");
+    }
+
+    var zip = new window.JSZip();
+    var failures = [];
+
+    for (var i = 0; i < items.length; i += 1) {
+      var item = items[i];
+      try {
+        if (!isUsableImageSource(item.url)) {
+          throw new Error("Geçerli görsel URL'si yok");
+        }
+
+        var response = await fetch(item.url);
+        if (!response.ok) {
+          throw new Error("HTTP " + response.status);
+        }
+
+        var blob = await response.blob();
+        zip.file(item.zipPath || item.fileName || ("file-" + (i + 1)), blob);
+      } catch (error) {
+        failures.push({
+          fileName: item.fileName || ("file-" + (i + 1)),
+          message: error.message || "İndirilemedi",
+        });
+      }
+    }
+
+    var hasFiles = Object.keys(zip.files).length > 0;
+    if (!hasFiles) {
+      throw new Error(
+        failures.length
+          ? "Hiçbir görsel indirilemedi. " +
+            failures.map(function (item) {
+              return item.fileName + ": " + item.message;
+            }).join(" | ")
+          : "İndirilecek dosya bulunamadı."
+      );
+    }
+
+    var zipBlob = await zip.generateAsync({ type: "blob" });
+    triggerBlobDownload(zipBlob, zipName);
+
+    return {
+      downloadedCount: Object.keys(zip.files).length,
+      failures: failures,
+    };
   }
 
   function escapeForTemplate(value) {
@@ -247,11 +305,13 @@
     isUsableImageSource: isUsableImageSource,
     canLoadImage: canLoadImage,
     getImagePlaceholderUrl: getImagePlaceholderUrl,
-    getResolvedImageSource: getResolvedImageSource,
+    resolveImageSrc: resolveImageSrc,
     getFallbackImageSource: getFallbackImageSource,
+    getDisplayImageSrc: getDisplayImageSrc,
     escapeForTemplate: escapeForTemplate,
     downloadTextFile: downloadTextFile,
     downloadFileFromUrl: downloadFileFromUrl,
+    downloadFilesAsZip: downloadFilesAsZip,
     copyToClipboard: copyToClipboard,
   };
 })();
