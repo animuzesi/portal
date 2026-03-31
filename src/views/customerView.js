@@ -10,9 +10,35 @@
   }
 
   function getImageSource(item) {
-    return escapeHtml(
-      item.previewUrl || item.image_url || window.AnimuzesiHelpers.getImagePlaceholderUrl()
-    );
+    if (window.AnimuzesiHelpers.isUsableImageSource(item.previewUrl)) {
+      return escapeHtml(item.previewUrl);
+    }
+
+    if (window.AnimuzesiHelpers.isUsableImageSource(item.image_url)) {
+      return escapeHtml(item.image_url);
+    }
+
+    return escapeHtml(window.AnimuzesiHelpers.getImagePlaceholderUrl());
+  }
+
+  function getFallbackImageSource(item, currentSource) {
+    var current = String(currentSource || "");
+
+    if (
+      window.AnimuzesiHelpers.isUsableImageSource(item.previewUrl) &&
+      current !== String(item.previewUrl)
+    ) {
+      return item.previewUrl;
+    }
+
+    if (
+      window.AnimuzesiHelpers.isUsableImageSource(item.image_url) &&
+      current !== String(item.image_url)
+    ) {
+      return item.image_url;
+    }
+
+    return window.AnimuzesiHelpers.getImagePlaceholderUrl();
   }
 
   function shouldIgnoreDragStart(target) {
@@ -99,7 +125,15 @@
               return (
                 '<article class="memory-card customer-card" draggable="true" data-id="' + item.id + '">' +
                 '<div class="memory-media">' +
-                '<img src="' + getImageSource(item) + '" alt="' + escapeHtml(item.title || "Anı fotoğrafı") + '" onerror="this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();" />' +
+                '<img src="' +
+                getImageSource(item) +
+                '" data-preview-src="' +
+                escapeHtml(item.previewUrl || "") +
+                '" data-image-src="' +
+                escapeHtml(item.image_url || "") +
+                '" alt="' +
+                escapeHtml(item.title || "Anı fotoğrafı") +
+                '" onerror="var next=window.AnimuzesiCustomerView.getFallbackImageSource({previewUrl:this.dataset.previewSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
                 '</div>' +
                 '<div class="memory-form">' +
                 '<div class="card-topline">' +
@@ -362,5 +396,6 @@
 
   window.AnimuzesiCustomerView = {
     renderCustomerView: renderCustomerView,
+    getFallbackImageSource: getFallbackImageSource,
   };
 })();

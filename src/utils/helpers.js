@@ -46,6 +46,55 @@
     return value && String(value).trim() ? String(value).trim() : "Tarih eklenmedi";
   }
 
+  function isUsableImageSource(value) {
+    if (!value) {
+      return false;
+    }
+
+    var normalized = String(value).trim();
+    if (!normalized) {
+      return false;
+    }
+
+    return /^(https?:\/\/|blob:|data:image\/)/i.test(normalized);
+  }
+
+  function canLoadImage(src, timeoutMs) {
+    return new Promise(function (resolve) {
+      if (!isUsableImageSource(src)) {
+        resolve(false);
+        return;
+      }
+
+      var image = new Image();
+      var settled = false;
+      var timer = window.setTimeout(function () {
+        if (!settled) {
+          settled = true;
+          resolve(false);
+        }
+      }, timeoutMs || 4000);
+
+      image.onload = function () {
+        if (!settled) {
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(true);
+        }
+      };
+
+      image.onerror = function () {
+        if (!settled) {
+          settled = true;
+          window.clearTimeout(timer);
+          resolve(false);
+        }
+      };
+
+      image.src = src;
+    });
+  }
+
   function getImagePlaceholderUrl() {
     return (
       "data:image/svg+xml;charset=UTF-8," +
@@ -107,6 +156,8 @@
     fileToDataUrl: fileToDataUrl,
     createMemoryRecord: createMemoryRecord,
     inferDateLabel: inferDateLabel,
+    isUsableImageSource: isUsableImageSource,
+    canLoadImage: canLoadImage,
     getImagePlaceholderUrl: getImagePlaceholderUrl,
     escapeForTemplate: escapeForTemplate,
     downloadTextFile: downloadTextFile,

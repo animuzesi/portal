@@ -94,6 +94,8 @@
       createdAt: row.created_at || "",
       submittedAt: row.created_at || "",
       dateLabel: helpers.inferDateLabel(row.date_text || ""),
+      isObjectPreview: false,
+      isUploading: false,
     };
   }
 
@@ -194,6 +196,31 @@
     state.orderEntries[orderNo] = normalizeOrderEntries(entries);
   }
 
+  function mergeFetchedEntries(orderNo, fetchedEntries) {
+    var currentEntries = getEntriesForOrder(orderNo);
+    var merged = fetchedEntries.map(function (entry) {
+      var current = currentEntries.find(function (item) {
+        return String(item.id) === String(entry.id);
+      });
+
+      if (
+        current &&
+        current.isObjectPreview &&
+        helpers.isUsableImageSource(current.previewUrl)
+      ) {
+        return Object.assign({}, entry, {
+          previewUrl: current.previewUrl,
+          image_url: entry.image_url || current.image_url,
+          isObjectPreview: true,
+        });
+      }
+
+      return entry;
+    });
+
+    setEntriesForOrder(orderNo, merged);
+  }
+
   function replaceEntry(orderNo, entryId, updater) {
     var current = getEntriesForOrder(orderNo);
     setEntriesForOrder(
@@ -241,7 +268,7 @@
     }
 
     var mapped = (response.data || []).map(mapEntryRow);
-    setEntriesForOrder(orderNo, mapped);
+    mergeFetchedEntries(orderNo, mapped);
     return mapped;
   }
 
@@ -494,23 +521,25 @@
         var persistedEntry = mapEntryRow(insertResponse.data);
         persistedEntry.imageWidth = metadata.width;
         persistedEntry.imageHeight = metadata.height;
-        persistedEntry.isUploading = false;
-        persistedEntry.isObjectPreview = false;
+        var resolvedRemoteUrl = supabaseApi.resolveStorageImageUrl(upload.imageUrl);
+        var remoteIsReady = await helpers.canLoadImage(resolvedRemoteUrl, 5000);
         var nextEntries = getEntriesForOrder(orderCode).map(function (entry) {
           if (entry.id === tempId) {
             return Object.assign({}, persistedEntry, {
-              previewUrl: supabaseApi.resolveStorageImageUrl(upload.imageUrl),
-              image_url: supabaseApi.resolveStorageImageUrl(upload.imageUrl),
+              previewUrl: remoteIsReady ? resolvedRemoteUrl : entry.previewUrl,
+              image_url: resolvedRemoteUrl,
+              isUploading: false,
+              isObjectPreview: remoteIsReady ? false : true,
             });
           }
           return entry;
         });
         setEntriesForOrder(orderCode, nextEntries);
-        revokePreviewUrl(optimisticEntry);
+        if (remoteIsReady) {
+          revokePreviewUrl(optimisticEntry);
+        }
         emit();
       }
-      await fetchEntriesForOrder(orderCode);
-      emit();
     } catch (error) {
       var currentEntries = getEntriesForOrder(orderCode);
       currentEntries.forEach(function (entry) {
@@ -671,6 +700,15 @@
   async function submitDraft() {
     var orderCode = getCurrentOrderCode();
     if (!orderCode) {
+      return;
+    }
+
+    if (
+      getEntriesForOrder(orderCode).some(function (entry) {
+        return entry.isObjectPreview;
+      })
+    ) {
+      emit();
       return;
     }
 
