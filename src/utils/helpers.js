@@ -114,6 +114,8 @@
   }
 
   function getResolvedImageSource(item) {
+    var supabaseApi = window.AnimuzesiSupabase;
+
     if (item && isUsableImageSource(item.previewUrl)) {
       return item.previewUrl;
     }
@@ -122,11 +124,24 @@
       return item.image_url;
     }
 
+    if (
+      item &&
+      item.image_url &&
+      supabaseApi &&
+      typeof supabaseApi.resolveStorageImageUrl === "function"
+    ) {
+      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(item.image_url);
+      if (isUsableImageSource(resolvedImageUrl)) {
+        return resolvedImageUrl;
+      }
+    }
+
     return getImagePlaceholderUrl();
   }
 
   function getFallbackImageSource(item, currentSource) {
     var current = String(currentSource || "");
+    var supabaseApi = window.AnimuzesiSupabase;
 
     if (
       item &&
@@ -144,7 +159,46 @@
       return item.image_url;
     }
 
+    if (
+      item &&
+      item.image_url &&
+      supabaseApi &&
+      typeof supabaseApi.resolveStorageImageUrl === "function"
+    ) {
+      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(item.image_url);
+      if (isUsableImageSource(resolvedImageUrl) && current !== String(resolvedImageUrl)) {
+        return resolvedImageUrl;
+      }
+    }
+
     return getImagePlaceholderUrl();
+  }
+
+  function triggerBlobDownload(blob, filename) {
+    var objectUrl = URL.createObjectURL(blob);
+    var anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(function () {
+      URL.revokeObjectURL(objectUrl);
+    }, 1000);
+  }
+
+  async function downloadFileFromUrl(url, filename) {
+    if (!isUsableImageSource(url)) {
+      throw new Error("İndirilecek geçerli bir görsel URL'si bulunamadı.");
+    }
+
+    var response = await fetch(url);
+    if (!response.ok) {
+      throw new Error("Görsel indirilemedi.");
+    }
+
+    var blob = await response.blob();
+    triggerBlobDownload(blob, filename);
   }
 
   function escapeForTemplate(value) {
@@ -197,6 +251,7 @@
     getFallbackImageSource: getFallbackImageSource,
     escapeForTemplate: escapeForTemplate,
     downloadTextFile: downloadTextFile,
+    downloadFileFromUrl: downloadFileFromUrl,
     copyToClipboard: copyToClipboard,
   };
 })();

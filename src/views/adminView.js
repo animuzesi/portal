@@ -53,6 +53,39 @@
         );
       };
     }
+
+    var downloadPhotosButton = document.querySelector("#download-renamed-photos");
+    if (downloadPhotosButton) {
+      downloadPhotosButton.onclick = async function () {
+        if (!outputs.downloadItems.length) {
+          return;
+        }
+
+        var originalLabel = downloadPhotosButton.textContent;
+        downloadPhotosButton.disabled = true;
+        downloadPhotosButton.textContent = "İndiriliyor";
+
+        try {
+          for (var i = 0; i < outputs.downloadItems.length; i += 1) {
+            var item = outputs.downloadItems[i];
+            var imageUrl = helpers.getResolvedImageSource(item.memory);
+            await helpers.downloadFileFromUrl(imageUrl, item.fileName);
+            await new Promise(function (resolve) {
+              window.setTimeout(resolve, 160);
+            });
+          }
+          downloadPhotosButton.textContent = "İndirildi";
+        } catch (error) {
+          console.error(error);
+          downloadPhotosButton.textContent = "İndirme hatası";
+        }
+
+        window.setTimeout(function () {
+          downloadPhotosButton.disabled = false;
+          downloadPhotosButton.textContent = originalLabel;
+        }, 1800);
+      };
+    }
   }
 
   function renderAdminView(container) {
@@ -88,6 +121,7 @@
       '<button class="secondary-button" id="copy-real" type="button">REAL_MEMORIES olarak kopyala</button>' +
       '<button class="secondary-button" id="copy-extra" type="button">EXTRA_MEMORIES olarak kopyala</button>' +
       '<button class="secondary-button" id="copy-rename-list" type="button">Yeniden adlandırma listesi oluştur</button>' +
+      '<button class="secondary-button" id="download-renamed-photos" type="button">Tüm fotoğrafları indir</button>' +
       '<button class="secondary-button" id="download-json" type="button">JSON dışa aktar</button>' +
       '</section>' +
       '<section class="dashboard-grid">' +
@@ -120,6 +154,16 @@
       var extraCode = exporters.createNamedExport("EXTRA_MEMORIES", splitted.extraMemories);
       var groupedRenameList = exporters.createGroupedRenameList(entries);
       var jsonExport = exporters.createJsonExport(submittedMemories, entries);
+      var downloadItems = entries
+        .map(function (entry, index) {
+          return {
+            fileName: entry.plannedFileName,
+            memory: submittedMemories[index],
+          };
+        })
+        .filter(function (item) {
+          return helpers.isUsableImageSource(helpers.getResolvedImageSource(item.memory));
+        });
       var totalOrdersWithData = currentState.validOrderCodes.filter(function (code) {
         var order = currentState.allOrders[code];
         return order && order.submitted && order.submitted.length;
@@ -184,6 +228,7 @@
         extraCode: extraCode,
         groupedRenameList: groupedRenameList,
         jsonExport: jsonExport,
+        downloadItems: downloadItems,
       });
     }
 
