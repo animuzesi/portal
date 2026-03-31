@@ -9,6 +9,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  function getImageSource(item) {
+    return escapeHtml(
+      item.previewUrl || item.image_url || window.AnimuzesiHelpers.getImagePlaceholderUrl()
+    );
+  }
+
   function renderCustomerView(container) {
     var snapshot = store.getState();
     var orderCode = snapshot.currentOrderCode || "-";
@@ -63,7 +69,7 @@
               return (
                 '<article class="memory-card customer-card" draggable="true" data-id="' + item.id + '">' +
                 '<div class="memory-media">' +
-                '<img src="' + item.previewUrl + '" alt="' + escapeHtml(item.title || "Anı fotoğrafı") + '" />' +
+                '<img src="' + getImageSource(item) + '" alt="' + escapeHtml(item.title || "Anı fotoğrafı") + '" onerror="this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();" />' +
                 '</div>' +
                 '<div class="memory-form">' +
                 '<div class="card-topline">' +

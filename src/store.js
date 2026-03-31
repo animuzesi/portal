@@ -96,6 +96,16 @@
     };
   }
 
+  function revokePreviewUrl(entry) {
+    if (entry && entry.isObjectPreview && entry.previewUrl) {
+      try {
+        URL.revokeObjectURL(entry.previewUrl);
+      } catch (error) {
+        console.warn("Object URL kaldırılamadı:", error);
+      }
+    }
+  }
+
   function getCurrentOrderCode() {
     if (state.auth.role === "customer" && state.auth.orderCode) {
       return state.auth.orderCode;
@@ -409,15 +419,35 @@
     try {
       setBusy(true);
       var existing = getEntriesForOrder(orderCode);
-      var mapped = [];
       for (var i = 0; i < files.length; i += 1) {
         var file = files[i];
         if (!file.type || file.type.indexOf("image/") !== 0) {
           continue;
         }
 
-        var previewUrl = await helpers.fileToDataUrl(file);
-        var metadata = await orientationApi.getImageMetadata(previewUrl);
+        var localPreviewUrl = URL.createObjectURL(file);
+        var metadata = await orientationApi.getImageMetadata(localPreviewUrl);
+        var tempId = helpers.generateId();
+        var optimisticEntry = helpers.createMemoryRecord({
+          id: tempId,
+          title: "",
+          date: "",
+          memoryText: "",
+          previewUrl: localPreviewUrl,
+          image_url: "",
+          originalFileName: file.name,
+          mimeType: file.type,
+          sortOrder: getEntriesForOrder(orderCode).length + 1,
+          orientation: metadata.orientation,
+          imageWidth: metadata.width,
+          imageHeight: metadata.height,
+          isUploading: true,
+          isObjectPreview: true,
+        });
+
+        setEntriesForOrder(orderCode, getEntriesForOrder(orderCode).concat([optimisticEntry]));
+        emit();
+
         var upload = await supabaseApi.uploadMemoryFile(orderCode, file);
         var client = supabaseApi.getClient();
         var insertResponse = await client
@@ -428,7 +458,7 @@
             date_text: "",
             description: "",
             image_url: upload.imageUrl,
-            sort_order: existing.length + mapped.length + 1,
+            sort_order: optimisticEntry.sortOrder,
             orientation: metadata.orientation,
           })
           .select("id, order_no, title, date_text, description, image_url, sort_order, orientation, created_at")
@@ -438,11 +468,39 @@
           throw insertResponse.error;
         }
 
-        mapped.push(mapEntryRow(insertResponse.data));
+        var persistedEntry = mapEntryRow(insertResponse.data);
+        persistedEntry.imageWidth = metadata.width;
+        persistedEntry.imageHeight = metadata.height;
+        var nextEntries = getEntriesForOrder(orderCode).map(function (entry) {
+          if (entry.id === tempId) {
+            return Object.assign({}, persistedEntry, {
+              previewUrl: upload.imageUrl,
+              image_url: upload.imageUrl,
+            });
+          }
+          return entry;
+        });
+        setEntriesForOrder(orderCode, nextEntries);
+        revokePreviewUrl(optimisticEntry);
+        emit();
       }
-
-      setEntriesForOrder(orderCode, existing.concat(mapped));
+      await fetchEntriesForOrder(orderCode);
       emit();
+    } catch (error) {
+      var currentEntries = getEntriesForOrder(orderCode);
+      currentEntries.forEach(function (entry) {
+        if (entry.isUploading) {
+          revokePreviewUrl(entry);
+        }
+      });
+      setEntriesForOrder(
+        orderCode,
+        currentEntries.filter(function (entry) {
+          return !entry.isUploading;
+        })
+      );
+      emit();
+      throw error;
     } finally {
       setBusy(false);
     }
@@ -497,9 +555,20 @@
 
   async function removeDraftMemory(id) {
     var orderCode = getCurrentOrderCode();
-    var next = getEntriesForOrder(orderCode).filter(function (item) {
+    var currentEntries = getEntriesForOrder(orderCode);
+    var target = currentEntries.find(function (item) {
+      return String(item.id) === String(id);
+    });
+    var next = currentEntries.filter(function (item) {
       return String(item.id) !== String(id);
     });
+
+    if (target && target.isUploading) {
+      revokePreviewUrl(target);
+      setEntriesForOrder(orderCode, next);
+      emit();
+      return;
+    }
 
     var deleteResponse = await supabaseApi.getClient().from("memory_entries").delete().eq("id", id);
     if (deleteResponse.error) {

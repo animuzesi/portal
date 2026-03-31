@@ -31,6 +31,7 @@
         date: "",
         memoryText: "",
         previewUrl: "",
+        image_url: "",
         originalFileName: "",
         mimeType: "image/jpeg",
         orientation: "portrait",
@@ -43,6 +44,24 @@
 
   function inferDateLabel(value) {
     return value && String(value).trim() ? String(value).trim() : "Tarih eklenmedi";
+  }
+
+  function getImagePlaceholderUrl() {
+    return (
+      "data:image/svg+xml;charset=UTF-8," +
+      encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 1000">' +
+          '<defs><linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">' +
+          '<stop offset="0%" stop-color="#eadfce" />' +
+          '<stop offset="100%" stop-color="#f6efe5" />' +
+          "</linearGradient></defs>" +
+          '<rect width="100%" height="100%" fill="url(#g)" />' +
+          '<circle cx="400" cy="360" r="120" fill="rgba(181,101,69,0.16)" />' +
+          '<path d="M220 720l140-170 110 110 70-85 140 145v90H220z" fill="rgba(141,68,39,0.18)" />' +
+          '<text x="50%" y="83%" dominant-baseline="middle" text-anchor="middle" font-family="Manrope, Arial, sans-serif" font-size="34" fill="#8d4427">Gorsel hazirlaniyor</text>' +
+          "</svg>"
+      )
+    );
   }
 
   function escapeForTemplate(value) {
@@ -88,6 +107,7 @@
     fileToDataUrl: fileToDataUrl,
     createMemoryRecord: createMemoryRecord,
     inferDateLabel: inferDateLabel,
+    getImagePlaceholderUrl: getImagePlaceholderUrl,
     escapeForTemplate: escapeForTemplate,
     downloadTextFile: downloadTextFile,
     copyToClipboard: copyToClipboard,

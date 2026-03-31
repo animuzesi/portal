@@ -11,6 +11,12 @@
       .replace(/"/g, "&quot;");
   }
 
+  function getImageSource(item) {
+    return escapeHtml(
+      item.previewUrl || item.image_url || window.AnimuzesiHelpers.getImagePlaceholderUrl()
+    );
+  }
+
   function bindCopy(selector, text) {
     var button = document.querySelector(selector);
     if (!button) {
@@ -149,7 +155,7 @@
 
               return (
                 '<article class="admin-memory-card ' + (missing.length ? 'has-missing' : '') + '">' +
-                '<div class="admin-media"><img src="' + item.previewUrl + '" alt="' + escapeHtml(item.title || 'Anı görseli') + '" /></div>' +
+                '<div class="admin-media"><img src="' + getImageSource(item) + '" alt="' + escapeHtml(item.title || 'Anı görseli') + '" onerror="this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();" /></div>' +
                 '<div class="admin-content">' +
                 '<div class="admin-topline">' +
                 '<span class="sort-pill">' + String(index + 1).padStart(2, '0') + '</span>' +
