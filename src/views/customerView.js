@@ -23,7 +23,6 @@
       '</div>' +
       '<div class="nav-actions auth-actions">' +
       '<span class="session-pill">Sipariş: ' + escapeHtml(orderCode) + '</span>' +
-      '<button class="secondary-button" id="load-mock-data" type="button">Örnek içerik yükle</button>' +
       '<button class="ghost-button" id="logout-button" type="button">Çıkış yap</button>' +
       '</div>' +
       '</aside>' +
@@ -37,11 +36,11 @@
       '<div class="cta-row">' +
       '<label class="primary-button" for="file-input">Fotoğraf ekle</label>' +
       '<input id="file-input" type="file" accept="image/*" multiple hidden />' +
-      '<button class="secondary-button" id="submit-memories" type="button">Gönder</button>' +
+      '<button class="secondary-button" id="submit-memories" type="button">Kaydet ve yenile</button>' +
       '</div>' +
       '</section>' +
       '<section class="dropzone" id="dropzone">' +
-      '<div><strong>Fotoğrafları buraya bırakın</strong><p>Birden fazla fotoğrafı aynı anda ekleyebilirsiniz.</p></div>' +
+      '<div><strong>Fotoğrafları buraya bırakın</strong><p>Yüklenen görseller doğrudan buluta kaydedilir ve bu siparişe bağlanır.</p></div>' +
       '</section>' +
       '<section id="customer-list" class="memory-list"></section>' +
       '</main>' +
@@ -53,7 +52,10 @@
     var submitButton = container.querySelector("#submit-memories");
 
     function paint() {
-      var customerDraft = store.getState().customerDraft;
+      var currentState = store.getState();
+      var customerDraft = currentState.customerDraft;
+      submitButton.disabled = currentState.isBusy;
+      fileInput.disabled = currentState.isBusy;
 
       list.innerHTML = customerDraft.length
         ? customerDraft
@@ -80,7 +82,7 @@
               );
             })
             .join("")
-        : '<div class="empty-state"><h3>Henüz fotoğraf eklenmedi.</h3><p>Bu sipariş için ilk görseli eklediğiniz anda kartlar burada görünür.</p></div>';
+        : '<div class="empty-state"><h3>Henüz fotoğraf eklenmedi.</h3><p>Bu sipariş için ilk görseli eklediğiniz anda kayıtlar burada görünür.</p></div>';
     }
 
     paint();
@@ -91,13 +93,13 @@
       window.location.hash = "#/login";
     });
 
-    container.querySelector("#load-mock-data").addEventListener("click", function () {
-      store.loadMockData(orderCode);
-    });
-
     fileInput.addEventListener("change", async function (event) {
-      await store.addFilesToDraft(event.target.files);
-      fileInput.value = "";
+      try {
+        await store.addFilesToDraft(event.target.files);
+        fileInput.value = "";
+      } catch (error) {
+        alert(error.message || "Görsel yüklenemedi.");
+      }
     });
 
     dropzone.addEventListener("dragover", function (event) {
@@ -112,24 +114,32 @@
     dropzone.addEventListener("drop", async function (event) {
       event.preventDefault();
       dropzone.classList.remove("is-dragging");
-      await store.addFilesToDraft(event.dataTransfer.files);
+      try {
+        await store.addFilesToDraft(event.dataTransfer.files);
+      } catch (error) {
+        alert(error.message || "Görsel yüklenemedi.");
+      }
     });
 
-    list.addEventListener("input", function (event) {
+    list.addEventListener("change", async function (event) {
       var target = event.target;
       var id = target.dataset.id;
       var field = target.dataset.field;
-
       if (!id || !field) {
         return;
       }
 
       var updates = {};
       updates[field] = target.value;
-      store.updateDraftMemory(id, updates);
+
+      try {
+        await store.updateDraftMemory(id, updates);
+      } catch (error) {
+        alert(error.message || "Kayıt güncellenemedi.");
+      }
     });
 
-    list.addEventListener("click", function (event) {
+    list.addEventListener("click", async function (event) {
       var button = event.target.closest("button");
       if (!button) {
         return;
@@ -140,9 +150,13 @@
         return;
       }
 
-      if (button.classList.contains("move-up")) store.moveDraftMemory(id, "up");
-      if (button.classList.contains("move-down")) store.moveDraftMemory(id, "down");
-      if (button.classList.contains("remove-memory")) store.removeDraftMemory(id);
+      try {
+        if (button.classList.contains("move-up")) await store.moveDraftMemory(id, "up");
+        if (button.classList.contains("move-down")) await store.moveDraftMemory(id, "down");
+        if (button.classList.contains("remove-memory")) await store.removeDraftMemory(id);
+      } catch (error) {
+        alert(error.message || "İşlem tamamlanamadı.");
+      }
     });
 
     var draggedId = "";
@@ -180,7 +194,7 @@
       }
     });
 
-    list.addEventListener("drop", function (event) {
+    list.addEventListener("drop", async function (event) {
       event.preventDefault();
       var card = event.target.closest(".memory-card");
       if (!card || !draggedId) {
@@ -190,14 +204,26 @@
       list.querySelectorAll(".memory-card").forEach(function (item) {
         item.classList.remove("drag-over");
       });
-      store.reorderDraftMemory(draggedId, card.dataset.id);
+
+      try {
+        await store.reorderDraftMemory(draggedId, card.dataset.id);
+      } catch (error) {
+        alert(error.message || "Sıralama güncellenemedi.");
+      }
     });
 
-    submitButton.addEventListener("click", function () {
-      store.submitDraft();
-      submitButton.textContent = "Gönderildi";
+    submitButton.addEventListener("click", async function () {
+      submitButton.disabled = true;
+      submitButton.textContent = "Yenileniyor";
+      try {
+        await store.submitDraft();
+        submitButton.textContent = "Kaydedildi";
+      } catch (error) {
+        submitButton.textContent = "Tekrar dene";
+      }
       window.setTimeout(function () {
-        submitButton.textContent = "Gönder";
+        submitButton.disabled = false;
+        submitButton.textContent = "Kaydet ve yenile";
       }, 1600);
     });
 

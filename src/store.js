@@ -1,14 +1,13 @@
 ﻿(function () {
   var helpers = window.AnimuzesiHelpers;
   var orientationApi = window.AnimuzesiOrientation;
+  var supabaseApi = window.AnimuzesiSupabase;
 
   var STORAGE_KEYS = {
     auth: "animuzesi_portal_auth",
-    orders: "animuzesi_portal_orders",
     adminSelection: "animuzesi_portal_admin_selection",
   };
 
-  var VALID_ORDER_CODES = ["AM-0001", "AM-0002", "AM-0003", "AM-0004", "AM-0005"];
   var ADMIN_PASSWORD = "3aydamilyoner";
   var listeners = [];
   var state = hydrateState();
@@ -37,38 +36,12 @@
     }
   }
 
-  function buildDefaultOrdersState() {
-    var orders = {};
-    VALID_ORDER_CODES.forEach(function (code) {
-      orders[code] = {
-        draft: [],
-        submitted: [],
-      };
-    });
-    return orders;
-  }
-
   function hydrateState() {
-    var persistedOrders = safeParse(safeStorageGet(STORAGE_KEYS.orders), {});
-    var orders = buildDefaultOrdersState();
-
-    VALID_ORDER_CODES.forEach(function (code) {
-      if (persistedOrders[code]) {
-        orders[code] = {
-          draft: Array.isArray(persistedOrders[code].draft) ? persistedOrders[code].draft : [],
-          submitted: Array.isArray(persistedOrders[code].submitted)
-            ? persistedOrders[code].submitted
-            : [],
-        };
-      }
-    });
-
     var auth = safeParse(safeStorageGet(STORAGE_KEYS.auth), {
       role: null,
       orderCode: null,
       loggedIn: false,
     });
-    var adminSelectedOrder = safeStorageGet(STORAGE_KEYS.adminSelection) || VALID_ORDER_CODES[0];
 
     return {
       auth: {
@@ -76,21 +49,51 @@
         orderCode: auth && auth.loggedIn ? auth.orderCode : null,
         loggedIn: Boolean(auth && auth.loggedIn),
       },
-      orders: orders,
-      adminSelectedOrder: VALID_ORDER_CODES.indexOf(adminSelectedOrder) > -1
-        ? adminSelectedOrder
-        : VALID_ORDER_CODES[0],
+      orders: [],
+      orderEntries: {},
+      adminSelectedOrder: safeStorageGet(STORAGE_KEYS.adminSelection) || null,
+      isBusy: false,
     };
   }
 
   function persist() {
     safeStorageSet(STORAGE_KEYS.auth, JSON.stringify(state.auth));
-    safeStorageSet(STORAGE_KEYS.orders, JSON.stringify(state.orders));
-    safeStorageSet(STORAGE_KEYS.adminSelection, state.adminSelectedOrder);
+    if (state.adminSelectedOrder) {
+      safeStorageSet(STORAGE_KEYS.adminSelection, state.adminSelectedOrder);
+    }
   }
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function deriveFileName(url) {
+    if (!url) {
+      return "isimsiz_gorsel.jpg";
+    }
+
+    var cleanUrl = String(url).split("?")[0];
+    var parts = cleanUrl.split("/");
+    return parts[parts.length - 1] || "isimsiz_gorsel.jpg";
+  }
+
+  function mapEntryRow(row) {
+    return {
+      id: row.id,
+      title: row.title || "",
+      date: row.date_text || "",
+      memoryText: row.description || "",
+      previewUrl: row.image_url || "",
+      image_url: row.image_url || "",
+      originalFileName: deriveFileName(row.image_url),
+      sortOrder: row.sort_order || 1,
+      orientation: row.orientation || "portrait",
+      imageWidth: 0,
+      imageHeight: 0,
+      createdAt: row.created_at || "",
+      submittedAt: row.created_at || "",
+      dateLabel: helpers.inferDateLabel(row.date_text || ""),
+    };
   }
 
   function getCurrentOrderCode() {
@@ -105,47 +108,38 @@
     return null;
   }
 
-  function getOrderBucket(orderCode) {
-    var code = orderCode || getCurrentOrderCode();
-
-    if (!code || !state.orders[code]) {
-      return {
-        draft: [],
-        submitted: [],
-      };
-    }
-
-    return state.orders[code];
+  function getEntriesForOrder(orderCode) {
+    return state.orderEntries[orderCode] ? state.orderEntries[orderCode].slice() : [];
   }
 
-  function getOrderSnapshot(orderCode) {
-    var bucket = getOrderBucket(orderCode);
-    return {
-      draft: clone(bucket.draft),
-      submitted: clone(bucket.submitted),
-    };
+  function getCurrentEntries() {
+    var orderCode = getCurrentOrderCode();
+    return orderCode ? getEntriesForOrder(orderCode) : [];
   }
 
   function getAllOrdersSnapshot() {
-    var snapshot = {};
-    VALID_ORDER_CODES.forEach(function (code) {
-      snapshot[code] = getOrderSnapshot(code);
+    var grouped = {};
+    state.orders.forEach(function (order) {
+      grouped[order.order_no] = {
+        draft: clone(getEntriesForOrder(order.order_no)),
+        submitted: clone(getEntriesForOrder(order.order_no)),
+      };
     });
-    return snapshot;
+    return grouped;
   }
 
   function getState() {
-    var currentOrderCode = getCurrentOrderCode();
-    var currentBucket = getOrderBucket(currentOrderCode);
-
     return {
       auth: clone(state.auth),
-      validOrderCodes: VALID_ORDER_CODES.slice(),
-      currentOrderCode: currentOrderCode,
-      customerDraft: clone(currentBucket.draft),
-      submittedMemories: clone(currentBucket.submitted),
+      validOrderCodes: state.orders.map(function (order) {
+        return order.order_no;
+      }),
+      currentOrderCode: getCurrentOrderCode(),
+      customerDraft: clone(getCurrentEntries()),
+      submittedMemories: clone(getCurrentEntries()),
       allOrders: getAllOrdersSnapshot(),
       adminSelectedOrder: state.adminSelectedOrder,
+      isBusy: state.isBusy,
     };
   }
 
@@ -159,7 +153,6 @@
 
   function subscribe(listener) {
     listeners.push(listener);
-
     return function () {
       listeners = listeners.filter(function (item) {
         return item !== listener;
@@ -167,68 +160,145 @@
     };
   }
 
-  function normalizeSortOrder(item, index) {
-    return Object.assign({}, item, { sortOrder: index + 1 });
+  function setBusy(value) {
+    state.isBusy = Boolean(value);
+    emit();
   }
 
-  function createMockSvg(label, accent, orientation) {
-    var isPortrait = orientation !== "landscape";
-    var width = isPortrait ? 800 : 1200;
-    var height = isPortrait ? 1100 : 800;
-
-    return (
-      "data:image/svg+xml;charset=UTF-8," +
-      encodeURIComponent(
-        '<svg xmlns="http://www.w3.org/2000/svg" width="' +
-          width +
-          '" height="' +
-          height +
-          '" viewBox="0 0 ' +
-          width +
-          " " +
-          height +
-          '">' +
-          "<defs>" +
-          '<linearGradient id="g" x1="0%" y1="0%" x2="100%" y2="100%">' +
-          '<stop offset="0%" stop-color="' + accent + '" />' +
-          '<stop offset="100%" stop-color="#f4e9da" />' +
-          "</linearGradient>" +
-          "</defs>" +
-          '<rect width="100%" height="100%" fill="url(#g)" />' +
-          '<circle cx="' + Math.round(width * 0.75) + '" cy="' + Math.round(height * 0.25) + '" r="' + Math.round(width * 0.12) + '" fill="rgba(255,255,255,0.32)" />' +
-          '<text x="50%" y="48%" dominant-baseline="middle" text-anchor="middle" font-family="Georgia, serif" font-size="' + Math.round(width * 0.06) + '" fill="#3f2e21">' + label + "</text>" +
-          "</svg>"
-      )
-    );
+  function normalizeOrderEntries(entries) {
+    return entries
+      .slice()
+      .sort(function (a, b) {
+        if (a.sortOrder === b.sortOrder) {
+          return String(a.id).localeCompare(String(b.id));
+        }
+        return a.sortOrder - b.sortOrder;
+      })
+      .map(function (item, index) {
+        return Object.assign({}, item, { sortOrder: index + 1 });
+      });
   }
 
-  function isValidOrderCode(orderCode) {
-    return VALID_ORDER_CODES.indexOf(String(orderCode || "").toUpperCase()) > -1;
+  function setEntriesForOrder(orderNo, entries) {
+    state.orderEntries[orderNo] = normalizeOrderEntries(entries);
   }
 
-  function loginCustomer(orderCode) {
+  async function fetchOrders() {
+    var client = supabaseApi.getClient();
+    var response = await client
+      .from("orders")
+      .select("id, order_no, created_at")
+      .order("created_at", { ascending: true });
+
+    if (response.error) {
+      throw response.error;
+    }
+
+    state.orders = response.data || [];
+
+    if (!state.adminSelectedOrder && state.orders.length) {
+      state.adminSelectedOrder = state.orders[0].order_no;
+    }
+
+    return state.orders;
+  }
+
+  async function fetchEntriesForOrder(orderNo) {
+    var client = supabaseApi.getClient();
+    var response = await client
+      .from("memory_entries")
+      .select("id, order_no, title, date_text, description, image_url, sort_order, orientation, created_at")
+      .eq("order_no", orderNo)
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (response.error) {
+      throw response.error;
+    }
+
+    var mapped = (response.data || []).map(mapEntryRow);
+    setEntriesForOrder(orderNo, mapped);
+    return mapped;
+  }
+
+  async function fetchAllEntries() {
+    var client = supabaseApi.getClient();
+    var response = await client
+      .from("memory_entries")
+      .select("id, order_no, title, date_text, description, image_url, sort_order, orientation, created_at")
+      .order("order_no", { ascending: true })
+      .order("sort_order", { ascending: true })
+      .order("created_at", { ascending: true });
+
+    if (response.error) {
+      throw response.error;
+    }
+
+    var grouped = {};
+    (response.data || []).forEach(function (row) {
+      if (!grouped[row.order_no]) {
+        grouped[row.order_no] = [];
+      }
+      grouped[row.order_no].push(mapEntryRow(row));
+    });
+
+    state.orders.forEach(function (order) {
+      setEntriesForOrder(order.order_no, grouped[order.order_no] || []);
+    });
+  }
+
+  async function hydrateCustomerOrder(orderNo) {
+    await fetchOrders();
+    var exists = state.orders.some(function (order) {
+      return order.order_no === orderNo;
+    });
+
+    if (!exists) {
+      throw new Error("Geçerli bir sipariş numarası girin.");
+    }
+
+    await fetchEntriesForOrder(orderNo);
+  }
+
+  async function refreshAdminData() {
+    await fetchOrders();
+    await fetchAllEntries();
+  }
+
+  async function loginCustomer(orderCode) {
     var normalized = String(orderCode || "").trim().toUpperCase();
 
-    if (!isValidOrderCode(normalized)) {
+    if (!normalized) {
       return {
         ok: false,
         message: "Geçerli bir sipariş numarası girin.",
       };
     }
 
-    state.auth = {
-      role: "customer",
-      orderCode: normalized,
-      loggedIn: true,
-    };
-    emit();
-    return {
-      ok: true,
-      orderCode: normalized,
-    };
+    try {
+      setBusy(true);
+      await hydrateCustomerOrder(normalized);
+      state.auth = {
+        role: "customer",
+        orderCode: normalized,
+        loggedIn: true,
+      };
+      emit();
+      return {
+        ok: true,
+        orderCode: normalized,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error.message || "Sipariş doğrulanamadı.",
+      };
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function loginAdmin(password) {
+  async function loginAdmin(password) {
     if (String(password || "") !== ADMIN_PASSWORD) {
       return {
         ok: false,
@@ -236,13 +306,27 @@
       };
     }
 
-    state.auth = {
-      role: "admin",
-      orderCode: null,
-      loggedIn: true,
-    };
-    emit();
-    return { ok: true };
+    try {
+      setBusy(true);
+      await refreshAdminData();
+      state.auth = {
+        role: "admin",
+        orderCode: null,
+        loggedIn: true,
+      };
+      if (!state.adminSelectedOrder && state.orders.length) {
+        state.adminSelectedOrder = state.orders[0].order_no;
+      }
+      emit();
+      return { ok: true };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error.message || "Admin verileri alınamadı.",
+      };
+    } finally {
+      setBusy(false);
+    }
   }
 
   function logout() {
@@ -254,56 +338,129 @@
     emit();
   }
 
-  function setAdminSelectedOrder(orderCode) {
-    if (!isValidOrderCode(orderCode)) {
+  async function restoreSession() {
+    if (!state.auth.loggedIn) {
+      return;
+    }
+
+    try {
+      setBusy(true);
+      if (state.auth.role === "customer" && state.auth.orderCode) {
+        await hydrateCustomerOrder(state.auth.orderCode);
+      }
+
+      if (state.auth.role === "admin") {
+        await refreshAdminData();
+      }
+    } catch (error) {
+      console.error(error);
+      logout();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setAdminSelectedOrder(orderCode) {
+    if (!orderCode) {
       return;
     }
 
     state.adminSelectedOrder = String(orderCode).toUpperCase();
+    try {
+      setBusy(true);
+      await fetchEntriesForOrder(state.adminSelectedOrder);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function syncSortOrder(orderNo, entries) {
+    var client = supabaseApi.getClient();
+    var ordered = normalizeOrderEntries(entries);
+    setEntriesForOrder(orderNo, ordered);
+
+    var responses = await Promise.all(
+      ordered.map(function (entry, index) {
+        return client
+          .from("memory_entries")
+          .update({ sort_order: index + 1 })
+          .eq("id", entry.id);
+      })
+    );
+
+    var failed = responses.find(function (response) {
+      return response.error;
+    });
+
+    if (failed) {
+      throw failed.error;
+    }
+
     emit();
   }
 
   async function addFilesToDraft(fileList) {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    var bucket = getOrderBucket(orderCode);
+    var orderCode = getCurrentOrderCode();
     var files = Array.prototype.slice.call(fileList || []);
-
-    if (!files.length) {
+    if (!orderCode || !files.length) {
       return;
     }
 
-    var mapped = await Promise.all(
-      files
-        .filter(function (file) {
-          return file.type && file.type.indexOf("image/") === 0;
-        })
-        .map(async function (file, index) {
-          var previewUrl = await helpers.fileToDataUrl(file);
-          var metadata = await orientationApi.getImageMetadata(previewUrl);
-          return helpers.createMemoryRecord({
-            id: helpers.generateId(),
-            sortOrder: bucket.draft.length + index + 1,
-            title: "",
-            date: "",
-            memoryText: "",
-            originalFileName: file.name,
-            mimeType: file.type,
-            previewUrl: previewUrl,
-            orientation: metadata.orientation,
-            imageWidth: metadata.width,
-            imageHeight: metadata.height,
-          });
-        })
-    );
+    try {
+      setBusy(true);
+      var existing = getEntriesForOrder(orderCode);
+      var mapped = [];
+      for (var i = 0; i < files.length; i += 1) {
+        var file = files[i];
+        if (!file.type || file.type.indexOf("image/") !== 0) {
+          continue;
+        }
 
-    state.orders[orderCode].draft = bucket.draft.concat(mapped).map(normalizeSortOrder);
-    emit();
+        var previewUrl = await helpers.fileToDataUrl(file);
+        var metadata = await orientationApi.getImageMetadata(previewUrl);
+        var upload = await supabaseApi.uploadMemoryFile(orderCode, file);
+        var client = supabaseApi.getClient();
+        var insertResponse = await client
+          .from("memory_entries")
+          .insert({
+            order_no: orderCode,
+            title: "",
+            date_text: "",
+            description: "",
+            image_url: upload.imageUrl,
+            sort_order: existing.length + mapped.length + 1,
+            orientation: metadata.orientation,
+          })
+          .select("id, order_no, title, date_text, description, image_url, sort_order, orientation, created_at")
+          .single();
+
+        if (insertResponse.error) {
+          throw insertResponse.error;
+        }
+
+        mapped.push(mapEntryRow(insertResponse.data));
+      }
+
+      setEntriesForOrder(orderCode, existing.concat(mapped));
+      emit();
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function updateDraftMemory(id, updates) {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    state.orders[orderCode].draft = getOrderBucket(orderCode).draft.map(function (item) {
-      if (item.id !== id) {
+  async function updateDraftMemory(id, updates) {
+    var orderCode = getCurrentOrderCode();
+    var current = getEntriesForOrder(orderCode);
+    var target = current.find(function (item) {
+      return String(item.id) === String(id);
+    });
+
+    if (!target) {
+      return;
+    }
+
+    var next = current.map(function (item) {
+      if (String(item.id) !== String(id)) {
         return item;
       }
 
@@ -313,24 +470,50 @@
         memoryText: helpers.sanitizeText(updates.memoryText != null ? updates.memoryText : item.memoryText),
       });
     });
-    emit();
-  }
 
-  function removeDraftMemory(id) {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    state.orders[orderCode].draft = getOrderBucket(orderCode).draft
-      .filter(function (item) {
-        return item.id !== id;
+    setEntriesForOrder(orderCode, next);
+    emit();
+
+    var updated = next.find(function (item) {
+      return String(item.id) === String(id);
+    });
+
+    var response = await supabaseApi
+      .getClient()
+      .from("memory_entries")
+      .update({
+        title: updated.title,
+        date_text: updated.date,
+        description: updated.memoryText,
+        sort_order: updated.sortOrder,
+        orientation: updated.orientation,
       })
-      .map(normalizeSortOrder);
-    emit();
+      .eq("id", id);
+
+    if (response.error) {
+      throw response.error;
+    }
   }
 
-  function moveDraftMemory(id, direction) {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    var bucket = getOrderBucket(orderCode);
-    var currentIndex = bucket.draft.findIndex(function (item) {
-      return item.id === id;
+  async function removeDraftMemory(id) {
+    var orderCode = getCurrentOrderCode();
+    var next = getEntriesForOrder(orderCode).filter(function (item) {
+      return String(item.id) !== String(id);
+    });
+
+    var deleteResponse = await supabaseApi.getClient().from("memory_entries").delete().eq("id", id);
+    if (deleteResponse.error) {
+      throw deleteResponse.error;
+    }
+
+    await syncSortOrder(orderCode, next);
+  }
+
+  async function moveDraftMemory(id, direction) {
+    var orderCode = getCurrentOrderCode();
+    var current = getEntriesForOrder(orderCode);
+    var currentIndex = current.findIndex(function (item) {
+      return String(item.id) === String(id);
     });
 
     if (currentIndex === -1) {
@@ -338,113 +521,57 @@
     }
 
     var targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (targetIndex < 0 || targetIndex >= bucket.draft.length) {
+    if (targetIndex < 0 || targetIndex >= current.length) {
       return;
     }
 
-    var next = bucket.draft.slice();
+    var next = current.slice();
     var moved = next.splice(currentIndex, 1)[0];
     next.splice(targetIndex, 0, moved);
-    state.orders[orderCode].draft = next.map(normalizeSortOrder);
-    emit();
+    await syncSortOrder(orderCode, next);
   }
 
-  function reorderDraftMemory(fromId, toId) {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    if (fromId === toId) {
+  async function reorderDraftMemory(fromId, toId) {
+    var orderCode = getCurrentOrderCode();
+    if (String(fromId) === String(toId)) {
       return;
     }
 
-    var list = getOrderBucket(orderCode).draft.slice();
-    var fromIndex = list.findIndex(function (item) {
-      return item.id === fromId;
+    var current = getEntriesForOrder(orderCode);
+    var fromIndex = current.findIndex(function (item) {
+      return String(item.id) === String(fromId);
     });
-    var toIndex = list.findIndex(function (item) {
-      return item.id === toId;
+    var toIndex = current.findIndex(function (item) {
+      return String(item.id) === String(toId);
     });
 
     if (fromIndex === -1 || toIndex === -1) {
       return;
     }
 
-    var moved = list.splice(fromIndex, 1)[0];
-    list.splice(toIndex, 0, moved);
-    state.orders[orderCode].draft = list.map(normalizeSortOrder);
-    emit();
+    var next = current.slice();
+    var moved = next.splice(fromIndex, 1)[0];
+    next.splice(toIndex, 0, moved);
+    await syncSortOrder(orderCode, next);
   }
 
-  function submitDraft() {
-    var orderCode = state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder;
-    var bucket = getOrderBucket(orderCode);
-    var stampedAt = new Date().toISOString();
-
-    state.orders[orderCode].submitted = bucket.draft.map(function (item, index) {
-      return Object.assign({}, item, {
-        id: item.id || helpers.generateId(),
-        sortOrder: index + 1,
-        submittedAt: stampedAt,
-        dateLabel: helpers.inferDateLabel(item.date),
-      });
-    });
-    emit();
-  }
-
-  function loadMockData(orderCode) {
-    var targetOrder = orderCode || (state.auth.role === "customer" ? state.auth.orderCode : state.adminSelectedOrder);
-    var bucket = getOrderBucket(targetOrder);
-
-    if (bucket.draft.length || bucket.submitted.length) {
+  async function submitDraft() {
+    var orderCode = getCurrentOrderCode();
+    if (!orderCode) {
       return;
     }
 
-    var draft = [
-      helpers.createMemoryRecord({
-        id: helpers.generateId(),
-        sortOrder: 1,
-        title: "İlk Yaz",
-        date: "Haziran 1998",
-        memoryText: "Bahçedeki salıncağın yanında saatlerce oturur, akşam serinliğini beklerdik.",
-        originalFileName: "IMG_4411.jpg",
-        mimeType: "image/jpeg",
-        previewUrl: createMockSvg("Ilk Yaz", "#d2aa8c", "portrait"),
-        orientation: "portrait",
-        imageWidth: 800,
-        imageHeight: 1100,
-      }),
-      helpers.createMemoryRecord({
-        id: helpers.generateId(),
-        sortOrder: 2,
-        title: "Sahil Günü",
-        date: "Ağustos 2004",
-        memoryText: "Rüzgar sertti ama hepimiz çok mutluyduk. Kumlara isimlerimizi yazmıştık.",
-        originalFileName: "uploaded_9832.jpg",
-        mimeType: "image/jpeg",
-        previewUrl: createMockSvg("Sahil Gunu", "#afc8be", "landscape"),
-        orientation: "landscape",
-        imageWidth: 1200,
-        imageHeight: 800,
-      }),
-    ].map(normalizeSortOrder);
-
-    state.orders[targetOrder].draft = draft;
-    state.orders[targetOrder].submitted = draft.map(function (item, index) {
-      return Object.assign({}, item, {
-        sortOrder: index + 1,
-        submittedAt: new Date().toISOString(),
-        dateLabel: helpers.inferDateLabel(item.date),
-      });
-    });
+    await fetchEntriesForOrder(orderCode);
     emit();
   }
 
   window.AnimuzesiStore = {
     subscribe: subscribe,
     getState: getState,
-    getOrderSnapshot: getOrderSnapshot,
-    isValidOrderCode: isValidOrderCode,
     loginCustomer: loginCustomer,
     loginAdmin: loginAdmin,
     logout: logout,
+    restoreSession: restoreSession,
     setAdminSelectedOrder: setAdminSelectedOrder,
     addFilesToDraft: addFilesToDraft,
     updateDraftMemory: updateDraftMemory,
@@ -452,6 +579,6 @@
     moveDraftMemory: moveDraftMemory,
     reorderDraftMemory: reorderDraftMemory,
     submitDraft: submitDraft,
-    loadMockData: loadMockData,
+    fetchEntriesForOrder: fetchEntriesForOrder,
   };
 })();

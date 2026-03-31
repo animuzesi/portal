@@ -53,25 +53,27 @@
 
   function renderAdminView(container) {
     var snapshot = store.getState();
-    var orderButtons = snapshot.validOrderCodes
-      .map(function (code) {
-        return '<button class="order-filter ' + (code === snapshot.adminSelectedOrder ? 'is-active' : '') + '" data-order-code="' + code + '" type="button">' + code + '</button>';
-      })
-      .join('');
+    var validCodes = snapshot.validOrderCodes;
+    var orderButtons = validCodes.length
+      ? validCodes
+          .map(function (code) {
+            return '<button class="order-filter ' + (code === snapshot.adminSelectedOrder ? 'is-active' : '') + '" data-order-code="' + code + '" type="button">' + code + '</button>';
+          })
+          .join('')
+      : '<div class="empty-state"><h3>Sipariş bulunamadı.</h3><p>Supabase orders tablosunda kayıt yok.</p></div>';
 
     container.innerHTML =
       '<div class="shell shell-admin">' +
       '<aside class="panel-nav admin-nav">' +
-      '<div><p class="eyebrow">Anı Müzesi</p><h1>Yönetim ve çıktı merkezi</h1><p class="lede">Tüm siparişleri tek yerden yönetin, teknik çıktıları üretin ve sipariş bazında kontrol edin.</p></div>' +
+      '<div><p class="eyebrow">Anı Müzesi</p><h1>Yönetim ve çıktı merkezi</h1><p class="lede">Orders ve memory_entries verileri doğrudan Supabase üzerinden okunur.</p></div>' +
       '<div class="nav-actions auth-actions">' +
       '<span class="session-pill">Admin oturumu</span>' +
-      '<button class="secondary-button" id="load-admin-mock-data" type="button">Örnek veri yükle</button>' +
       '<button class="ghost-button" id="logout-button" type="button">Çıkış yap</button>' +
       '</div>' +
       '</aside>' +
       '<main class="panel-main">' +
       '<section class="hero-card admin-hero-card">' +
-      '<div><p class="eyebrow">Admin Paneli</p><h2>Sipariş kayıtları ve teknik çıktılar</h2><p class="muted">Seçili sipariş için müze kodunu üretin, tüm siparişlerin durumunu tek bakışta görün.</p></div>' +
+      '<div><p class="eyebrow">Admin Paneli</p><h2>Sipariş kayıtları ve teknik çıktılar</h2><p class="muted">Seçili sipariş için kayıtları görüntüleyin, export üretin ve orientation/path bilgisini kontrol edin.</p></div>' +
       '<div class="order-switcher">' +
       '<p class="switcher-label">Sipariş seç</p>' +
       '<div class="order-filter-grid">' + orderButtons + '</div>' +
@@ -103,9 +105,9 @@
     var renamePreview = container.querySelector("#rename-list-preview");
 
     function buildOutputs() {
-      var state = store.getState();
-      var selectedOrderCode = state.adminSelectedOrder;
-      var selectedOrder = state.allOrders[selectedOrderCode] || { draft: [], submitted: [] };
+      var currentState = store.getState();
+      var selectedOrderCode = currentState.adminSelectedOrder;
+      var selectedOrder = currentState.allOrders[selectedOrderCode] || { draft: [], submitted: [] };
       var submittedMemories = selectedOrder.submitted;
       var entries = exporters.buildMuseumDataset(submittedMemories);
       var splitted = exporters.splitMuseumData(entries);
@@ -114,14 +116,14 @@
       var extraCode = exporters.createNamedExport("EXTRA_MEMORIES", splitted.extraMemories);
       var groupedRenameList = exporters.createGroupedRenameList(entries);
       var jsonExport = exporters.createJsonExport(submittedMemories, entries);
-      var totalOrdersWithData = state.validOrderCodes.filter(function (code) {
-        var order = state.allOrders[code];
-        return order && (order.draft.length || order.submitted.length);
+      var totalOrdersWithData = currentState.validOrderCodes.filter(function (code) {
+        var order = currentState.allOrders[code];
+        return order && order.submitted && order.submitted.length;
       }).length;
 
       museumPreview.textContent = museumCode;
       renamePreview.textContent = groupedRenameList;
-      container.querySelector("#summary-orders").textContent = String(totalOrdersWithData);
+      container.querySelector("#summary-orders").textContent = String(currentState.validOrderCodes.length);
       container.querySelector("#summary-count").textContent = String(entries.length);
       container.querySelector("#summary-real").textContent = String(splitted.realMemories.length);
 
@@ -153,15 +155,14 @@
                 '<span class="sort-pill">' + String(index + 1).padStart(2, '0') + '</span>' +
                 '<span class="meta-chip">' + entries[index].orientation + '</span>' +
                 '<span class="meta-chip">' + plannedFileName + '</span>' +
-                '<span class="meta-chip">' + escapeHtml(selectedOrderCode) + '</span>' +
+                '<span class="meta-chip">' + escapeHtml(selectedOrderCode || '-') + '</span>' +
                 '</div>' +
                 '<h3>' + escapeHtml(item.title || 'Başlıksız Anı') + '</h3>' +
                 '<p class="admin-date">' + escapeHtml(item.date || 'Tarih eklenmedi') + '</p>' +
                 '<p class="admin-memory-text">' + escapeHtml(item.memoryText || 'Anı metni eklenmedi') + '</p>' +
                 '<div class="admin-metadata">' +
                 '<span><strong>Path:</strong> ' + plannedPath + '</span>' +
-                '<span><strong>Kaynak dosya:</strong> ' + escapeHtml(item.originalFileName) + '</span>' +
-                '<span><strong>Ölçü:</strong> ' + (item.imageWidth || 0) + ' x ' + (item.imageHeight || 0) + '</span>' +
+                '<span><strong>Görsel:</strong> ' + escapeHtml(item.image_url || item.previewUrl) + '</span>' +
                 '</div>' +
                 (missing.length
                   ? '<div class="missing-banner">Eksik alanlar: ' + missing.join(', ') + '</div>'
@@ -171,7 +172,7 @@
               );
             })
             .join('')
-        : '<div class="empty-state admin-empty"><h3>Bu sipariş için gönderilmiş kayıt yok.</h3><p>' + escapeHtml(selectedOrderCode) + ' siparişinden gönderim geldiğinde burada görünecek.</p></div>';
+        : '<div class="empty-state admin-empty"><h3>Bu sipariş için kayıt yok.</h3><p>' + escapeHtml(selectedOrderCode || '-') + ' siparişine ait memory_entries satırı bulunduğunda burada görünecek.</p></div>';
 
       wireActions({
         museumCode: museumCode,
@@ -190,18 +191,21 @@
       window.location.hash = "#/login";
     });
 
-    container.querySelector("#load-admin-mock-data").addEventListener("click", function () {
-      store.loadMockData(store.getState().adminSelectedOrder);
-    });
+    var orderGrid = container.querySelector(".order-filter-grid");
+    if (orderGrid) {
+      orderGrid.addEventListener("click", async function (event) {
+        var button = event.target.closest(".order-filter");
+        if (!button) {
+          return;
+        }
 
-    container.querySelector(".order-filter-grid").addEventListener("click", function (event) {
-      var button = event.target.closest(".order-filter");
-      if (!button) {
-        return;
-      }
-
-      store.setAdminSelectedOrder(button.dataset.orderCode);
-    });
+        try {
+          await store.setAdminSelectedOrder(button.dataset.orderCode);
+        } catch (error) {
+          alert(error.message || "Sipariş verisi alınamadı.");
+        }
+      });
+    }
 
     return function () {
       unsubscribe();

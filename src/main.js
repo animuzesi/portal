@@ -22,7 +22,7 @@
       '</div>';
   }
 
-  function boot() {
+  async function boot() {
     try {
       ensureAppRoot();
 
@@ -34,12 +34,14 @@
         window.location.hash = "#/login";
       }
 
+      if (window.AnimuzesiStore && window.AnimuzesiStore.restoreSession) {
+        await window.AnimuzesiStore.restoreSession();
+      }
+
       window.AnimuzesiRouter.start();
     } catch (error) {
       console.error(error);
-      renderBootError(
-        "Başlangıç sırasında bir hata oluştu. Sayfayı yenileyip yeniden deneyin."
-      );
+      renderBootError(error.message || "Başlangıç sırasında bir hata oluştu.");
     }
   }
 
