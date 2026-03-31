@@ -10,35 +10,7 @@
   }
 
   function getImageSource(item) {
-    if (window.AnimuzesiHelpers.isUsableImageSource(item.previewUrl)) {
-      return escapeHtml(item.previewUrl);
-    }
-
-    if (window.AnimuzesiHelpers.isUsableImageSource(item.image_url)) {
-      return escapeHtml(item.image_url);
-    }
-
-    return escapeHtml(window.AnimuzesiHelpers.getImagePlaceholderUrl());
-  }
-
-  function getFallbackImageSource(item, currentSource) {
-    var current = String(currentSource || "");
-
-    if (
-      window.AnimuzesiHelpers.isUsableImageSource(item.previewUrl) &&
-      current !== String(item.previewUrl)
-    ) {
-      return item.previewUrl;
-    }
-
-    if (
-      window.AnimuzesiHelpers.isUsableImageSource(item.image_url) &&
-      current !== String(item.image_url)
-    ) {
-      return item.image_url;
-    }
-
-    return window.AnimuzesiHelpers.getImagePlaceholderUrl();
+    return escapeHtml(window.AnimuzesiHelpers.getResolvedImageSource(item));
   }
 
   function shouldIgnoreDragStart(target) {
@@ -133,7 +105,7 @@
                 escapeHtml(item.image_url || "") +
                 '" alt="' +
                 escapeHtml(item.title || "Anı fotoğrafı") +
-                '" onerror="var next=window.AnimuzesiCustomerView.getFallbackImageSource({previewUrl:this.dataset.previewSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
+                '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
                 '</div>' +
                 '<div class="memory-form">' +
                 '<div class="card-topline">' +
@@ -396,6 +368,5 @@
 
   window.AnimuzesiCustomerView = {
     renderCustomerView: renderCustomerView,
-    getFallbackImageSource: getFallbackImageSource,
   };
 })();

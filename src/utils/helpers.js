@@ -113,6 +113,40 @@
     );
   }
 
+  function getResolvedImageSource(item) {
+    if (item && isUsableImageSource(item.previewUrl)) {
+      return item.previewUrl;
+    }
+
+    if (item && isUsableImageSource(item.image_url)) {
+      return item.image_url;
+    }
+
+    return getImagePlaceholderUrl();
+  }
+
+  function getFallbackImageSource(item, currentSource) {
+    var current = String(currentSource || "");
+
+    if (
+      item &&
+      isUsableImageSource(item.previewUrl) &&
+      current !== String(item.previewUrl)
+    ) {
+      return item.previewUrl;
+    }
+
+    if (
+      item &&
+      isUsableImageSource(item.image_url) &&
+      current !== String(item.image_url)
+    ) {
+      return item.image_url;
+    }
+
+    return getImagePlaceholderUrl();
+  }
+
   function escapeForTemplate(value) {
     return String(value == null ? "" : value)
       .replace(/\\/g, "\\\\")
@@ -159,6 +193,8 @@
     isUsableImageSource: isUsableImageSource,
     canLoadImage: canLoadImage,
     getImagePlaceholderUrl: getImagePlaceholderUrl,
+    getResolvedImageSource: getResolvedImageSource,
+    getFallbackImageSource: getFallbackImageSource,
     escapeForTemplate: escapeForTemplate,
     downloadTextFile: downloadTextFile,
     copyToClipboard: copyToClipboard,
