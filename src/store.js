@@ -78,14 +78,15 @@
   }
 
   function mapEntryRow(row) {
+    var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(row.image_url || "");
     return {
       id: row.id,
       title: row.title || "",
       date: row.date_text || "",
       memoryText: row.description || "",
-      previewUrl: row.image_url || "",
-      image_url: row.image_url || "",
-      originalFileName: deriveFileName(row.image_url),
+      previewUrl: resolvedImageUrl,
+      image_url: resolvedImageUrl,
+      originalFileName: deriveFileName(resolvedImageUrl || row.image_url),
       sortOrder: row.sort_order || 1,
       orientation: row.orientation || "portrait",
       imageWidth: 0,
@@ -191,6 +192,19 @@
 
   function setEntriesForOrder(orderNo, entries) {
     state.orderEntries[orderNo] = normalizeOrderEntries(entries);
+  }
+
+  function replaceEntry(orderNo, entryId, updater) {
+    var current = getEntriesForOrder(orderNo);
+    setEntriesForOrder(
+      orderNo,
+      current.map(function (entry) {
+        if (String(entry.id) !== String(entryId)) {
+          return entry;
+        }
+        return updater(entry);
+      })
+    );
   }
 
   async function fetchOrders() {
@@ -426,7 +440,6 @@
         }
 
         var localPreviewUrl = URL.createObjectURL(file);
-        var metadata = await orientationApi.getImageMetadata(localPreviewUrl);
         var tempId = helpers.generateId();
         var optimisticEntry = helpers.createMemoryRecord({
           id: tempId,
@@ -438,14 +451,24 @@
           originalFileName: file.name,
           mimeType: file.type,
           sortOrder: getEntriesForOrder(orderCode).length + 1,
-          orientation: metadata.orientation,
-          imageWidth: metadata.width,
-          imageHeight: metadata.height,
+          orientation: "portrait",
+          imageWidth: 0,
+          imageHeight: 0,
           isUploading: true,
           isObjectPreview: true,
         });
 
         setEntriesForOrder(orderCode, getEntriesForOrder(orderCode).concat([optimisticEntry]));
+        emit();
+
+        var metadata = await orientationApi.getImageMetadata(localPreviewUrl);
+        replaceEntry(orderCode, tempId, function (entry) {
+          return Object.assign({}, entry, {
+            orientation: metadata.orientation,
+            imageWidth: metadata.width,
+            imageHeight: metadata.height,
+          });
+        });
         emit();
 
         var upload = await supabaseApi.uploadMemoryFile(orderCode, file);
@@ -471,11 +494,13 @@
         var persistedEntry = mapEntryRow(insertResponse.data);
         persistedEntry.imageWidth = metadata.width;
         persistedEntry.imageHeight = metadata.height;
+        persistedEntry.isUploading = false;
+        persistedEntry.isObjectPreview = false;
         var nextEntries = getEntriesForOrder(orderCode).map(function (entry) {
           if (entry.id === tempId) {
             return Object.assign({}, persistedEntry, {
-              previewUrl: upload.imageUrl,
-              image_url: upload.imageUrl,
+              previewUrl: supabaseApi.resolveStorageImageUrl(upload.imageUrl),
+              image_url: supabaseApi.resolveStorageImageUrl(upload.imageUrl),
             });
           }
           return entry;
@@ -602,6 +627,7 @@
 
   async function reorderDraftMemory(fromId, toId) {
     var orderCode = getCurrentOrderCode();
+    var placement = arguments.length > 2 ? arguments[2] : "before";
     if (String(fromId) === String(toId)) {
       return;
     }
@@ -620,7 +646,25 @@
 
     var next = current.slice();
     var moved = next.splice(fromIndex, 1)[0];
-    next.splice(toIndex, 0, moved);
+    var insertionIndex = toIndex;
+
+    if (fromIndex < toIndex) {
+      insertionIndex -= 1;
+    }
+
+    if (placement === "after") {
+      insertionIndex += 1;
+    }
+
+    if (insertionIndex < 0) {
+      insertionIndex = 0;
+    }
+
+    if (insertionIndex > next.length) {
+      insertionIndex = next.length;
+    }
+
+    next.splice(insertionIndex, 0, moved);
     await syncSortOrder(orderCode, next);
   }
 

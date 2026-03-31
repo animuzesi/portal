@@ -420,8 +420,14 @@ pre,
   outline: 2px dashed var(--accent);
 }
 
+.memory-card.drag-over-after {
+  outline: 2px dashed rgba(181, 101, 69, 0.55);
+  box-shadow: inset 0 -4px 0 rgba(181, 101, 69, 0.45), var(--shadow);
+}
+
 .memory-card.dragging {
   opacity: 0.6;
+  transform: scale(0.985);
 }
 
 .memory-media,

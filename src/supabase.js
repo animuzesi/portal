@@ -71,8 +71,25 @@
     };
   }
 
+  function resolveStorageImageUrl(value) {
+    if (!value) {
+      return "";
+    }
+
+    if (/^https?:\/\//i.test(value) || /^blob:/i.test(value) || /^data:/i.test(value)) {
+      return value;
+    }
+
+    var path = String(value).replace(/^memory-uploads\//, "").replace(/^\/+/, "");
+    var publicUrlResult = getClient().storage.from("memory-uploads").getPublicUrl(path);
+    return publicUrlResult && publicUrlResult.data && publicUrlResult.data.publicUrl
+      ? publicUrlResult.data.publicUrl
+      : "";
+  }
+
   window.AnimuzesiSupabase = {
     getClient: getClient,
     uploadMemoryFile: uploadMemoryFile,
+    resolveStorageImageUrl: resolveStorageImageUrl,
   };
 })();

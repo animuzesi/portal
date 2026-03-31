@@ -15,6 +15,10 @@
     );
   }
 
+  function shouldIgnoreDragStart(target) {
+    return Boolean(target.closest("input, textarea, button, label"));
+  }
+
   function renderCustomerView(container) {
     var snapshot = store.getState();
     var orderCode = snapshot.currentOrderCode || "-";
@@ -56,6 +60,32 @@
     var dropzone = container.querySelector("#dropzone");
     var list = container.querySelector("#customer-list");
     var submitButton = container.querySelector("#submit-memories");
+    var touchDragState = {
+      fromId: "",
+      overId: "",
+      placement: "before",
+      active: false,
+    };
+
+    function clearDragMarkers() {
+      list.querySelectorAll(".memory-card").forEach(function (item) {
+        item.classList.remove("drag-over");
+        item.classList.remove("drag-over-after");
+      });
+    }
+
+    function applyTargetMarker(card, placement) {
+      if (!card) {
+        return;
+      }
+
+      card.classList.add(placement === "after" ? "drag-over-after" : "drag-over");
+    }
+
+    function getPlacement(card, clientY) {
+      var rect = card.getBoundingClientRect();
+      return clientY > rect.top + rect.height / 2 ? "after" : "before";
+    }
 
     function paint() {
       var currentState = store.getState();
@@ -166,8 +196,14 @@
     });
 
     var draggedId = "";
+    var draggedPlacement = "before";
 
     list.addEventListener("dragstart", function (event) {
+      if (shouldIgnoreDragStart(event.target)) {
+        event.preventDefault();
+        return;
+      }
+
       var card = event.target.closest(".memory-card");
       if (!card) {
         return;
@@ -175,6 +211,9 @@
 
       draggedId = card.dataset.id;
       card.classList.add("dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+      }
     });
 
     list.addEventListener("dragend", function (event) {
@@ -189,7 +228,9 @@
       event.preventDefault();
       var card = event.target.closest(".memory-card");
       if (card) {
-        card.classList.add("drag-over");
+        clearDragMarkers();
+        draggedPlacement = getPlacement(card, event.clientY);
+        applyTargetMarker(card, draggedPlacement);
       }
     });
 
@@ -197,6 +238,7 @@
       var card = event.target.closest(".memory-card");
       if (card) {
         card.classList.remove("drag-over");
+        card.classList.remove("drag-over-after");
       }
     });
 
@@ -207,12 +249,92 @@
         return;
       }
 
-      list.querySelectorAll(".memory-card").forEach(function (item) {
-        item.classList.remove("drag-over");
-      });
+      clearDragMarkers();
 
       try {
-        await store.reorderDraftMemory(draggedId, card.dataset.id);
+        await store.reorderDraftMemory(draggedId, card.dataset.id, draggedPlacement);
+      } catch (error) {
+        alert(error.message || "Sıralama güncellenemedi.");
+      }
+    });
+
+    list.addEventListener(
+      "touchstart",
+      function (event) {
+        if (shouldIgnoreDragStart(event.target)) {
+          return;
+        }
+
+        var card = event.target.closest(".memory-card");
+        if (!card) {
+          return;
+        }
+
+        touchDragState.fromId = card.dataset.id;
+        touchDragState.active = true;
+        card.classList.add("dragging");
+      },
+      { passive: true }
+    );
+
+    list.addEventListener(
+      "touchmove",
+      function (event) {
+        if (!touchDragState.active || !touchDragState.fromId) {
+          return;
+        }
+
+        var touch = event.touches && event.touches[0];
+        if (!touch) {
+          return;
+        }
+
+        var target = document.elementFromPoint(touch.clientX, touch.clientY);
+        var card = target ? target.closest(".memory-card") : null;
+        clearDragMarkers();
+
+        if (!card || card.dataset.id === touchDragState.fromId) {
+          touchDragState.overId = "";
+          return;
+        }
+
+        touchDragState.overId = card.dataset.id;
+        touchDragState.placement = getPlacement(card, touch.clientY);
+        applyTargetMarker(card, touchDragState.placement);
+        event.preventDefault();
+      },
+      { passive: false }
+    );
+
+    list.addEventListener("touchend", async function () {
+      var originCard = touchDragState.fromId
+        ? list.querySelector('.memory-card[data-id="' + touchDragState.fromId + '"]')
+        : null;
+      if (originCard) {
+        originCard.classList.remove("dragging");
+      }
+
+      if (!touchDragState.active) {
+        return;
+      }
+
+      var fromId = touchDragState.fromId;
+      var overId = touchDragState.overId;
+      var placement = touchDragState.placement;
+      touchDragState = {
+        fromId: "",
+        overId: "",
+        placement: "before",
+        active: false,
+      };
+      clearDragMarkers();
+
+      if (!fromId || !overId) {
+        return;
+      }
+
+      try {
+        await store.reorderDraftMemory(fromId, overId, placement);
       } catch (error) {
         alert(error.message || "Sıralama güncellenemedi.");
       }
