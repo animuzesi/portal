@@ -446,6 +446,26 @@ pre,
   object-fit: cover;
 }
 
+.resolved-photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  visibility: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.memory-media.is-placeholder,
+.admin-media.is-placeholder {
+  background: var(--bg-deep);
+}
+
+.placeholder-photo {
+  object-fit: cover;
+}
+
 .memory-form,
 .admin-content {
   display: grid;

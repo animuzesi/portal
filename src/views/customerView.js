@@ -13,6 +13,30 @@
     return escapeHtml(window.AnimuzesiHelpers.getDisplayImageSrc(item));
   }
 
+  function renderMedia(item) {
+    var resolvedImageSrc = window.AnimuzesiHelpers.resolveImageSrc(item);
+
+    if (!resolvedImageSrc) {
+      return (
+        '<div class="memory-media is-placeholder">' +
+        '<img class="resolved-photo placeholder-photo" src="' +
+        escapeHtml(window.AnimuzesiHelpers.getImagePlaceholderUrl()) +
+        '" alt="Görsel hazırlanıyor" />' +
+        "</div>"
+      );
+    }
+
+    return (
+      '<div class="memory-media">' +
+      '<img class="resolved-photo" src="' +
+      escapeHtml(resolvedImageSrc) +
+      '" alt="' +
+      escapeHtml(item.title || "Anı fotoğrafı") +
+      '" onerror="this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();this.classList.add(\'placeholder-photo\');this.closest(\'.memory-media\').classList.add(\'is-placeholder\');" />' +
+      "</div>"
+    );
+  }
+
   function shouldIgnoreDragStart(target) {
     return Boolean(target.closest("input, textarea, button, label"));
   }
@@ -96,19 +120,7 @@
             .map(function (item, index) {
               return (
                 '<article class="memory-card customer-card" draggable="true" data-id="' + item.id + '">' +
-                '<div class="memory-media">' +
-                '<img src="' +
-                getImageSource(item) +
-                '" data-preview-src="' +
-                escapeHtml(item.previewUrl || "") +
-                '" data-resolved-image-src="' +
-                escapeHtml(item.resolvedImageUrl || "") +
-                '" data-image-src="' +
-                escapeHtml(item.image_url || "") +
-                '" alt="' +
-                escapeHtml(item.title || "Anı fotoğrafı") +
-                '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,resolvedImageUrl:this.dataset.resolvedImageSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
-                '</div>' +
+                renderMedia(item) +
                 '<div class="memory-form">' +
                 '<div class="card-topline">' +
                 '<span class="sort-pill">' + String(index + 1).padStart(2, "0") + '</span>' +
