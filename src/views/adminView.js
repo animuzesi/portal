@@ -209,7 +209,7 @@
 
               return (
                 '<article class="admin-memory-card ' + (missing.length ? 'has-missing' : '') + '">' +
-                '<div class="admin-media"><img src="' + getImageSource(item) + '" data-preview-src="' + escapeHtml(item.previewUrl || "") + '" data-image-src="' + escapeHtml(item.image_url || "") + '" alt="' + escapeHtml(item.title || 'Anı görseli') + '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" /></div>' +
+                '<div class="admin-media"><img src="' + getImageSource(item) + '" data-preview-src="' + escapeHtml(item.previewUrl || "") + '" data-resolved-image-src="' + escapeHtml(item.resolvedImageUrl || "") + '" data-image-src="' + escapeHtml(item.image_url || "") + '" alt="' + escapeHtml(item.title || 'Anı görseli') + '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,resolvedImageUrl:this.dataset.resolvedImageSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" /></div>' +
                 '<div class="admin-content">' +
                 '<div class="admin-topline">' +
                 '<span class="sort-pill">' + String(index + 1).padStart(2, '0') + '</span>' +
@@ -222,7 +222,7 @@
                 '<p class="admin-memory-text">' + escapeHtml(item.memoryText || 'Anı metni eklenmedi') + '</p>' +
                 '<div class="admin-metadata">' +
                 '<span><strong>Path:</strong> ' + plannedPath + '</span>' +
-                '<span><strong>Görsel:</strong> ' + escapeHtml(item.image_url || item.previewUrl) + '</span>' +
+                '<span><strong>Görsel Kaynağı:</strong> ' + escapeHtml(item.resolvedImageUrl || item.image_url || item.previewUrl || "-") + '</span>' +
                 '</div>' +
                 (missing.length
                   ? '<div class="missing-banner">Eksik alanlar: ' + missing.join(', ') + '</div>'

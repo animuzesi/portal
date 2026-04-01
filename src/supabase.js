@@ -87,9 +87,96 @@
       : "";
   }
 
+  function extractStoragePath(value) {
+    if (!value) {
+      return "";
+    }
+
+    var normalized = String(value).trim();
+    if (!normalized) {
+      return "";
+    }
+
+    if (!/^https?:\/\//i.test(normalized)) {
+      return normalized.replace(/^memory-uploads\//, "").replace(/^\/+/, "");
+    }
+
+    try {
+      var url = new URL(normalized);
+      var markerIndex = url.pathname.indexOf("/storage/v1/object/");
+      if (markerIndex === -1) {
+        return "";
+      }
+
+      var remainder = url.pathname.slice(markerIndex + "/storage/v1/object/".length);
+      var segments = remainder.split("/").filter(Boolean);
+      if (!segments.length) {
+        return "";
+      }
+
+      if (segments[0] === "public" || segments[0] === "sign" || segments[0] === "authenticated") {
+        segments.shift();
+      }
+
+      if (segments[0] === "memory-uploads") {
+        segments.shift();
+      }
+
+      return segments.join("/");
+    } catch (error) {
+      return "";
+    }
+  }
+
+  async function createSignedStorageUrl(path, expiresInSeconds) {
+    if (!path) {
+      return "";
+    }
+
+    var response = await getClient()
+      .storage
+      .from("memory-uploads")
+      .createSignedUrl(path, expiresInSeconds || 3600);
+
+    if (response.error) {
+      throw response.error;
+    }
+
+    return response.data && response.data.signedUrl ? response.data.signedUrl : "";
+  }
+
+  async function ensureAccessibleImageUrl(value) {
+    if (!value) {
+      return "";
+    }
+
+    if (/^blob:/i.test(value) || /^data:/i.test(value)) {
+      return value;
+    }
+
+    var path = extractStoragePath(value);
+    if (path) {
+      try {
+        var signedUrl = await createSignedStorageUrl(path, 3600);
+        if (signedUrl) {
+          return signedUrl;
+        }
+      } catch (error) {
+        console.warn("Signed URL üretilemedi, public URL kullanılacak:", error);
+      }
+
+      return resolveStorageImageUrl(path);
+    }
+
+    return resolveStorageImageUrl(value);
+  }
+
   window.AnimuzesiSupabase = {
     getClient: getClient,
     uploadMemoryFile: uploadMemoryFile,
     resolveStorageImageUrl: resolveStorageImageUrl,
+    extractStoragePath: extractStoragePath,
+    createSignedStorageUrl: createSignedStorageUrl,
+    ensureAccessibleImageUrl: ensureAccessibleImageUrl,
   };
 })();

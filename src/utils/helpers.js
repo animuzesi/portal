@@ -115,22 +115,27 @@
 
   function resolveImageSrc(item) {
     var supabaseApi = window.AnimuzesiSupabase;
+    var rawImageValue = item ? item.image_url || item.imageUrl || "" : "";
 
     if (item && isUsableImageSource(item.previewUrl)) {
       return item.previewUrl;
     }
 
-    if (item && isUsableImageSource(item.image_url)) {
-      return item.image_url;
+    if (item && isUsableImageSource(item.resolvedImageUrl)) {
+      return item.resolvedImageUrl;
+    }
+
+    if (item && isUsableImageSource(rawImageValue)) {
+      return rawImageValue;
     }
 
     if (
       item &&
-      item.image_url &&
+      rawImageValue &&
       supabaseApi &&
       typeof supabaseApi.resolveStorageImageUrl === "function"
     ) {
-      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(item.image_url);
+      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(rawImageValue);
       if (isUsableImageSource(resolvedImageUrl)) {
         return resolvedImageUrl;
       }
@@ -142,6 +147,7 @@
   function getFallbackImageSource(item, currentSource) {
     var current = String(currentSource || "");
     var supabaseApi = window.AnimuzesiSupabase;
+    var rawImageValue = item ? item.image_url || item.imageUrl || "" : "";
 
     if (
       item &&
@@ -153,19 +159,27 @@
 
     if (
       item &&
-      isUsableImageSource(item.image_url) &&
-      current !== String(item.image_url)
+      isUsableImageSource(item.resolvedImageUrl) &&
+      current !== String(item.resolvedImageUrl)
     ) {
-      return item.image_url;
+      return item.resolvedImageUrl;
     }
 
     if (
       item &&
-      item.image_url &&
+      isUsableImageSource(rawImageValue) &&
+      current !== String(rawImageValue)
+    ) {
+      return rawImageValue;
+    }
+
+    if (
+      item &&
+      rawImageValue &&
       supabaseApi &&
       typeof supabaseApi.resolveStorageImageUrl === "function"
     ) {
-      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(item.image_url);
+      var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(rawImageValue);
       if (isUsableImageSource(resolvedImageUrl) && current !== String(resolvedImageUrl)) {
         return resolvedImageUrl;
       }

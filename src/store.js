@@ -77,16 +77,20 @@
     return parts[parts.length - 1] || "isimsiz_gorsel.jpg";
   }
 
-  function mapEntryRow(row) {
-    var resolvedImageUrl = supabaseApi.resolveStorageImageUrl(row.image_url || "");
+  async function mapEntryRow(row) {
+    var rawImageValue = row.image_url || row.imageUrl || "";
+    var resolvedImageUrl = await supabaseApi.ensureAccessibleImageUrl(rawImageValue);
     return {
       id: row.id,
+      orderNo: row.order_no || "",
       title: row.title || "",
       date: row.date_text || "",
       memoryText: row.description || "",
       previewUrl: resolvedImageUrl,
-      image_url: resolvedImageUrl,
-      originalFileName: deriveFileName(resolvedImageUrl || row.image_url),
+      image_url: rawImageValue,
+      imageUrl: rawImageValue,
+      resolvedImageUrl: resolvedImageUrl,
+      originalFileName: deriveFileName(resolvedImageUrl || rawImageValue),
       sortOrder: row.sort_order || 1,
       orientation: row.orientation || "portrait",
       imageWidth: 0,
@@ -267,7 +271,7 @@
       throw response.error;
     }
 
-    var mapped = (response.data || []).map(mapEntryRow);
+    var mapped = await Promise.all((response.data || []).map(mapEntryRow));
     mergeFetchedEntries(orderNo, mapped);
     return mapped;
   }
@@ -286,11 +290,12 @@
     }
 
     var grouped = {};
-    (response.data || []).forEach(function (row) {
-      if (!grouped[row.order_no]) {
-        grouped[row.order_no] = [];
+    var mappedRows = await Promise.all((response.data || []).map(mapEntryRow));
+    mappedRows.forEach(function (row) {
+      if (!grouped[row.orderNo]) {
+        grouped[row.orderNo] = [];
       }
-      grouped[row.order_no].push(mapEntryRow(row));
+      grouped[row.orderNo].push(row);
     });
 
     state.orders.forEach(function (order) {
@@ -518,16 +523,20 @@
           throw insertResponse.error;
         }
 
-        var persistedEntry = mapEntryRow(insertResponse.data);
+        var persistedEntry = await mapEntryRow(insertResponse.data);
         persistedEntry.imageWidth = metadata.width;
         persistedEntry.imageHeight = metadata.height;
-        var resolvedRemoteUrl = supabaseApi.resolveStorageImageUrl(upload.imageUrl);
+        var resolvedRemoteUrl =
+          persistedEntry.resolvedImageUrl ||
+          (await supabaseApi.ensureAccessibleImageUrl(upload.imageUrl || upload.path));
         var remoteIsReady = await helpers.canLoadImage(resolvedRemoteUrl, 5000);
         var nextEntries = getEntriesForOrder(orderCode).map(function (entry) {
           if (entry.id === tempId) {
             return Object.assign({}, persistedEntry, {
               previewUrl: remoteIsReady ? resolvedRemoteUrl : entry.previewUrl,
-              image_url: resolvedRemoteUrl,
+              image_url: insertResponse.data.image_url || upload.imageUrl || upload.path,
+              imageUrl: insertResponse.data.image_url || upload.imageUrl || upload.path,
+              resolvedImageUrl: resolvedRemoteUrl,
               isUploading: false,
               isObjectPreview: remoteIsReady ? false : true,
             });

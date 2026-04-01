@@ -101,11 +101,13 @@
                 getImageSource(item) +
                 '" data-preview-src="' +
                 escapeHtml(item.previewUrl || "") +
+                '" data-resolved-image-src="' +
+                escapeHtml(item.resolvedImageUrl || "") +
                 '" data-image-src="' +
                 escapeHtml(item.image_url || "") +
                 '" alt="' +
                 escapeHtml(item.title || "Anı fotoğrafı") +
-                '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
+                '" onerror="var next=window.AnimuzesiHelpers.getFallbackImageSource({previewUrl:this.dataset.previewSrc,resolvedImageUrl:this.dataset.resolvedImageSrc,image_url:this.dataset.imageSrc},this.src); if(next&&this.src!==next){this.src=next;} else {this.onerror=null;this.src=window.AnimuzesiHelpers.getImagePlaceholderUrl();}" />' +
                 '</div>' +
                 '<div class="memory-form">' +
                 '<div class="card-topline">' +
